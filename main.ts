@@ -41,6 +41,28 @@ if (w > 1024 || h > 1024) {
   throw new Error(`entry.png is ${w}x${h}, over the 1024x1024 gate limit`);
 }
 
+// The gate takes only a whole image: a PNG must end at its IEND chunk and a
+// JPEG at its end-of-image marker, with nothing truncated in between.
+function checkComplete(): void {
+  if (isPng) {
+    const iend = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]);
+    if (!bytes.subarray(bytes.length - 12).equals(iend)) {
+      throw new Error('entry.png is a truncated PNG: no IEND chunk at the end');
+    }
+    return;
+  }
+  if (bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9) {
+    throw new Error('entry.png is a truncated JPEG: no end-of-image marker at the end');
+  }
+}
+checkComplete();
+
 const out = join(process.env.MAKEFUN_OUTPUT_DIR ?? '/output', 'entry.png');
 copyFileSync(src, out);
-console.log(`wrote ${out} (${bytes.length} bytes)`);
+
+// Read the copy back: the run is only good if the output is the same bytes.
+const written = readFileSync(out);
+if (!written.equals(bytes)) {
+  throw new Error('the copied output differs from entry.png');
+}
+console.log(`wrote ${out} (${bytes.length} bytes, ${w}x${h}, complete)`);
